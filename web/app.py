@@ -1,5 +1,6 @@
 from distutils.log import debug
 import json
+from urllib import request
 from flask import Flask, jsonify, requests
 from pymongo import MongoClient
 from flask_restful import Resource, Api
@@ -12,6 +13,31 @@ api = Api(app)
 client = MongoClient("localhost", 27017)
 db = client.GogglesDB
 users = db["Users"]
+
+
+def verifyUsername(username):
+    if users.find_one({"Username": username}).count_documents() > 0:
+        return True
+    else:
+        return False
+
+def generateDictionary(status, message):
+    retJSON = {
+        "status": status,
+        "message": message
+    }
+
+    return jsonify(retJSON)
+
+def verifyLogin(username, password):
+    pwd = users.find_one({"Username": username})[0]["Password"]
+
+    if bcrypt.hashpw(password.encode("utf8"), bcrypt.gensalt()) == pwd:
+        return generateDictionary(302, "invalid credentials")
+
+def getTokenCount(username):
+    num_count = users.find_one({"Username": username})[0]["Tokens"]
+    return num_count
 
 # User register end point
 class Register(Resource):
@@ -28,11 +54,7 @@ class Register(Resource):
 
         # if the username is taken send a fail response
         if user_exists:
-            retJSON = {
-                "status": 301,
-                "message": "username already exists. try another username or login if the account belongs to you"
-            }
-            return jsonify(retJSON)
+            return generateDictionary(301,"username already exists. try another username or login if the account belongs to you" )
         
         # if the username is available, complete the registration
 
@@ -44,14 +66,41 @@ class Register(Resource):
             "Tokens": 10
         })
 
-        retJSON = {
-            "status": 200,
-            "message": "Registration successful"
-        }
+        return generateDictionary(200, "Registration successful")
 
-        return jsonify(retJSON)
+# refill endpoint 
+class Refill(Resource):
+    def post(self):
+        postedData = request.get_json()
 
+        # get username and admin password
+        username = postedData["username"]
+        admin_pw = postedData["admin_pw"]
+        refill_amt = postedData["refill_amt"]
 
+        # admin_pw
+        admin_key = "3647sgshsk"
+
+        if not admin_key == admin_pw:
+            return generateDictionary(305, "Wrong admin password")
+
+        if admin_key == admin_pw:
+            return generateDictionary(200, "Tokens added")
+
+        count = getTokenCount(username)
+
+        users.update_one(
+            {
+                "Username": username
+            }, 
+            {
+                "$set": {
+                    "Tokens": refill_amt + count
+                }
+            })
+        
+api.add_resource(Register, '/register')
+api.add_rosourve(Refill, '/refill')
 
 
 if __name__=="__main__":
