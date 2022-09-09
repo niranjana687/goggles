@@ -1,0 +1,1 @@
+FROM pymongo:6
